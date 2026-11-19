@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Move this file to .github/workflows/gate.yml to activate it on GitHub.
+#
+# It lives here because the repo was first pushed with a token that had no
+# `workflow` scope, and GitHub refuses to let such a token write a workflow file.
+# One command fixes that, then this file can move:
+#
+#     gh auth refresh -s workflow
+#     mkdir -p .github/workflows && git mv ci/gate.yml .github/workflows/gate.yml
+#     git commit -m "ci: activate the gate" && git push
+#
+# Until then `node scripts/gate.mjs` is the same gate, run locally.
+# ─────────────────────────────────────────────────────────────────────────────
+name: gate
+
+# Every PR must pass the gate before it merges. A red gate is not a discussion —
+# see BOT.md for what the resident engineer does about it.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: install
+        run: npm ci
+
+      # Remotion needs its own Chrome build on a headless runner.
+      - name: browser
+        run: npx remotion browser ensure
+
+      # The score is generated, not committed. A loud step here means the cues changed.
+      - name: soundtrack
+        run: node scripts/score.mjs
+
+      # Linux runners have no CJK display fonts; without this the 100 px place names
+      # render as tofu and every locked frame fails for the wrong reason.
+      - name: fonts
+        run: |
+          sudo apt-get install -y -qq fonts-noto-cjk
+          fc-cache -f
+
+      - name: contract + locked frames + liveness
+        run: node scripts/gate.mjs
+
+      - name: keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-${{ github.sha }}
+          path: out/gate/
+          if-no-files-found: warn
+          retention-days: 14

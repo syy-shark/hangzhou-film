@@ -71,9 +71,19 @@ node scripts/gate.mjs --update # re-seed the baseline (needs human approval — 
 - **liveness** — mean frame difference per half-second across the whole film; catches a scene
   that has gone frozen (≥2 s with no motion) or a cut that jumps (>4× median)
 
-`.github/workflows/gate.yml` runs the same three checks on every PR and uploads the keyframes,
-the motion curve and the low-res pass as artifacts. `BOT.md` describes what a resident
-engineer is allowed to do about a red gate, and what is deliberately not theirs.
+`# CI: one command to activate
+`ci/gate.yml` is the same three checks on a GitHub runner. It is not yet in
+`.github/workflows/` because the initial push went out with a token that has no `workflow`
+scope. Activating it is one command, and it is written at the top of the file:
+
+```bash
+gh auth refresh -s workflow
+mkdir -p .github/workflows && git mv ci/gate.yml .github/workflows/gate.yml
+git commit -m "ci: activate the gate" && git push
+```
+
+`BOT.md` describes what a resident engineer is allowed to do about a red gate, and what is
+deliberately not theirs.
 
 ## Layout
 
@@ -90,5 +100,7 @@ scripts/
   cues.json        the score's source of truth
   gate.mjs         the merge gate
   check.sh         deeper post-render review (12-frame sheet, spectral, loudness)
-  baseline/        locked keyframes the gate compares against
+  baseline/        locked keyframes + the approved motion curve
+ci/
+  gate.yml         the CI job (move to .github/workflows/ to activate)
 ```
